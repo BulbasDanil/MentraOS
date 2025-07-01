@@ -23,6 +23,7 @@ import {
   PhotoRequest,
   RtmpStreamRequest,
   RtmpStreamStopRequest,
+  AppLocationPollRequest,
 } from '@mentra/sdk';
 import UserSession from '../session/UserSession';
 import * as developerService from '../core/developer.service';
@@ -32,6 +33,7 @@ import { logger as rootLogger } from '../logging/pino-logger';
 import transcriptionService from '../processing/transcription.service';
 import photoRequestService from '../core/photo-request.service';
 import e from 'express';
+import { locationService } from '../core/location.service';
 
 const SERVICE_NAME = 'websocket-app.service';
 const logger = rootLogger.child({ service: SERVICE_NAME });
@@ -185,6 +187,11 @@ export class AppWebSocketService {
       switch (message.type) {
         case AppToCloudMessageType.SUBSCRIPTION_UPDATE:
           await this.handleSubscriptionUpdate(appWebsocket, userSession, message);
+          break;
+
+        case AppToCloudMessageType.LOCATION_POLL_REQUEST:
+          const pollRequest = message as AppLocationPollRequest;
+          await locationService.handlePollRequest(userSession.userId, pollRequest.accuracy, pollRequest.correlationId);
           break;
 
         case AppToCloudMessageType.DISPLAY_REQUEST:

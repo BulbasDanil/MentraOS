@@ -7,6 +7,7 @@ import { logger } from "../services/logging/pino-logger";
 interface Location {
   lat: number;
   lng: number;
+  timestamp?: Date;
 }
 
 interface InstalledApp {
@@ -68,6 +69,10 @@ export interface UserI extends Document {
    * Example: { "org.example.myapp": true, "org.other.app": false }
    */
   onboardingStatus?: Record<string, boolean>;
+
+  // [NEW] fields for our new tiered location system
+  location_subscriptions?: Map<string, { rate: string }>;
+  effective_location_rate?: string;
 
   setLocation(location: Location): Promise<void>;
   addRunningApp(appName: string): Promise<void>;
@@ -172,8 +177,10 @@ const UserSchema = new Schema<UserI>({
   location: {
     type: {
       lat: { type: Number, required: true },
-      lng: { type: Number, required: true }
-    }
+      lng: { type: Number, required: true },
+      timestamp: { type: Date }
+    },
+    required: false
   },
 
   /**
@@ -240,6 +247,23 @@ const UserSchema = new Schema<UserI>({
     of: Boolean,
     default: {},
   },
+
+  // [NEW] schema definitions for tiered location streaming
+  location_subscriptions: {
+    type: Map,
+    of: {
+      rate: {
+        type: String,
+        enum: ['reduced', 'threeKilometers', 'kilometer', 'hundredMeters', 'tenMeters', 'high', 'realtime'],
+        default: 'reduced'
+      }
+    },
+    default: {}
+  },
+  effective_location_rate: {
+    type: String,
+    default: 'reduced'
+  }
 }, {
   timestamps: true,
   optimisticConcurrency: true,

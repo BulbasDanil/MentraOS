@@ -10,12 +10,13 @@
  * - Enforcing permission checks on subscriptions
  */
 
-import { StreamType, ExtendedStreamType, isLanguageStream, parseLanguageStream, createTranscriptionStream, CalendarEvent } from '@mentra/sdk';
+import { StreamType, ExtendedStreamType, isLanguageStream, parseLanguageStream, createTranscriptionStream, CalendarEvent, LocationStreamRequest, SubscriptionRequest } from '@mentra/sdk';
 import { logger as rootLogger } from '../logging/pino-logger';
 import { SimplePermissionChecker } from '../permissions/simple-permission-checker';
 import App from '../../models/app.model';
 import { sessionService } from './session.service';
 import UserSession from './UserSession';
+import { User } from '../../models/user.model';
 
 const logger = rootLogger.child({ service: 'subscription.service' });
 
@@ -157,7 +158,7 @@ export class SubscriptionService {
   async updateSubscriptions(
     userSession: UserSession,
     packageName: string,
-    subscriptions: ExtendedStreamType[]
+    subscriptions: SubscriptionRequest[]
   ): Promise<void> {
     const key = this.getKey(userSession.userId, packageName);
 
@@ -169,18 +170,12 @@ export class SubscriptionService {
     const thisCallVersion = currentVersion;
 
     logger.info({ key, subscriptions, userId: userSession.userId }, 'Update subscriptions request received');
-    const currentSubs = this.subscriptions.get(key) || new Set();
-    const action: SubscriptionHistory['action'] = currentSubs.size === 0 ? 'add' : 'update';
-
-    logger.info({ key, subscriptions, userId: userSession.userId }, 'Processing subscription update');
+    
+    // we process the raw SubscriptionRequest array first to get a simple list of strings
+    const processedSubscriptions: ExtendedStreamType[] = subscriptions.map(sub => (typeof sub === 'string' ? sub : sub.stream));
+    const locationStreamSub = subscriptions.find(s => typeof s !== 'string' && s.stream === 'location_stream') as LocationStreamRequest | undefined;
 
     // Validate subscriptions format
-    const processedSubscriptions = subscriptions.map(sub =>
-      sub === StreamType.TRANSCRIPTION ?
-        createTranscriptionStream('en-US') :
-        sub
-    );
-
     for (const sub of processedSubscriptions) {
       if (!this.isValidSubscription(sub)) {
         logger.error({
@@ -248,12 +243,27 @@ export class SubscriptionService {
           appWebsocket.send(JSON.stringify(errorMessage));
         }
 
-
         // Continue with only the allowed subscriptions
         processedSubscriptions.length = 0;
         processedSubscriptions.push(...allowed);
       }
-      const newSubs = new Set(processedSubscriptions);
+
+      // after permission checks, update the database with our location data
+      const user = await User.findOne({ email: userSession.userId });
+      if (user) {
+        const locationSubs = user.location_subscriptions || new Map();
+        // check if the location stream is in the list of *allowed* subscriptions
+        if (locationStreamSub && allowed.includes('location_stream')) {
+          locationSubs.set(packageName, { rate: locationStreamSub.rate || 'reduced' });
+        } else {
+          // if not subscribed, ensure it's removed from our map
+          locationSubs.delete(packageName);
+        }
+        user.location_subscriptions = locationSubs;
+        await user.save();
+      }
+      
+      const newSubs = new Set(allowed);
 
       // At the end, before setting:
       if (this.subscriptionUpdateVersion.get(key) !== thisCallVersion) {
@@ -272,7 +282,7 @@ export class SubscriptionService {
       this.addToHistory(key, {
         timestamp: new Date(),
         subscriptions: [...processedSubscriptions],
-        action
+        action: 'update'
       });
 
       logger.info({
@@ -294,7 +304,7 @@ export class SubscriptionService {
       this.addToHistory(key, {
         timestamp: new Date(),
         subscriptions: [...processedSubscriptions],
-        action
+        action: 'update'
       });
     }
   }
