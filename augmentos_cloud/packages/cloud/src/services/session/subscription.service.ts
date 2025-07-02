@@ -171,11 +171,17 @@ export class SubscriptionService {
 
     logger.info({ key, subscriptions, userId: userSession.userId }, 'Update subscriptions request received');
     
-    // we process the raw SubscriptionRequest array first to get a simple list of strings
-    const processedSubscriptions: ExtendedStreamType[] = subscriptions.map(sub => (typeof sub === 'string' ? sub : sub.stream));
+    // [FIX] Correctly process the mixed array
+    const processedSubscriptions: ExtendedStreamType[] = subscriptions.map(sub => {
+      if (typeof sub === 'string') {
+        return sub === StreamType.TRANSCRIPTION ? createTranscriptionStream('en-US') : sub;
+      }
+      return sub.stream; // For our LocationStreamRequest object, just extract the stream name string
+    });
+    
     const locationStreamSub = subscriptions.find(s => typeof s !== 'string' && s.stream === 'location_stream') as LocationStreamRequest | undefined;
 
-    // Validate subscriptions format
+    // The validation loop should now work because it only sees strings
     for (const sub of processedSubscriptions) {
       if (!this.isValidSubscription(sub)) {
         logger.error({

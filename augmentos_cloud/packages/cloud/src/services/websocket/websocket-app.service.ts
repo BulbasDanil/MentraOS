@@ -294,6 +294,10 @@ export class AppWebSocketService {
         message.packageName,
         message.subscriptions
       );
+
+      // [NEW] after subscriptions are updated, trigger our new service to check the location rate
+      await locationService.handleSubscriptionChange(userSession.userId);
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       userSession.logger.error({
