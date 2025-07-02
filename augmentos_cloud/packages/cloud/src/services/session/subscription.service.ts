@@ -170,20 +170,10 @@ export class SubscriptionService {
     const thisCallVersion = currentVersion;
 
     logger.info({ key, subscriptions, userId: userSession.userId }, 'Update subscriptions request received');
-    
-    // [FIX] Correctly process the mixed array
-    const processedSubscriptions: ExtendedStreamType[] = subscriptions.map(sub => {
-      if (typeof sub === 'string') {
-        return sub === StreamType.TRANSCRIPTION ? createTranscriptionStream('en-US') : sub;
-      }
-      return sub.stream; // For our LocationStreamRequest object, just extract the stream name string
-    });
-    
-    const locationStreamSub = subscriptions.find(s => typeof s !== 'string' && s.stream === 'location_stream') as LocationStreamRequest | undefined;
 
-    // The validation loop should now work because it only sees strings
-    for (const sub of processedSubscriptions) {
-      if (!this.isValidSubscription(sub)) {
+    // [REVISED LOGIC] We will validate the mixed-type array directly.
+    for (const sub of subscriptions) {
+      if (!this.isValidSubscription(sub)) { // The validation function will now be smarter
         logger.error({
           debugKey: 'RTMP_SUB_VALIDATION_FAIL',
           subscription: sub,
@@ -194,12 +184,16 @@ export class SubscriptionService {
           isRtmpStreamStatus: sub === 'rtmp_stream_status',
           isRtmpStreamStatusEnum: sub === StreamType.RTMP_STREAM_STATUS,
           streamTypeEnumValue: StreamType.RTMP_STREAM_STATUS,
-          processedSubscriptions,
+          processedSubscriptions: subscriptions,
           originalSubscriptions: subscriptions
         }, 'RTMP_SUB_VALIDATION_FAIL: Invalid subscription type detected in session subscription service');
-        throw new Error(`Invalid subscription type: ${sub}`);
+        throw new Error(`Invalid subscription type: ${JSON.stringify(sub)}`);
       }
     }
+
+    // if validation passes, we can proceed
+    const processedSubscriptions: ExtendedStreamType[] = subscriptions.map(sub => (typeof sub === 'string' ? sub : sub.stream));
+    const locationStreamSub = subscriptions.find(s => typeof s !== 'string' && s.stream === 'location_stream') as LocationStreamRequest | undefined;
 
     logger.info({ processedSubscriptions, userId: userSession.userId }, 'Processed and validated subscriptions');
 
@@ -579,33 +573,28 @@ export class SubscriptionService {
    * @returns Boolean indicating if the subscription is valid
    * @private
    */
-  private isValidSubscription(subscription: ExtendedStreamType): boolean {
+  private isValidSubscription(subscription: SubscriptionRequest): boolean {
     const validTypes = new Set(Object.values(StreamType));
-    const isValid = validTypes.has(subscription as StreamType) || isLanguageStream(subscription);
-
-    // Allow augmentos:<key> subscriptions for AugmentOS settings
-    if (typeof subscription === 'string' && subscription.startsWith('augmentos:')) {
+    
+    // [NEW LOGIC] Handle both strings and objects
+    if (typeof subscription === 'string') {
+      // old logic for strings is fine
+      if (subscription.startsWith('augmentos:')) {
+        return true;
+      }
+      return validTypes.has(subscription as StreamType) || isLanguageStream(subscription);
+    } else if (typeof subscription === 'object' && subscription !== null) {
+      // new logic for our LocationStreamRequest object
+      // check that it has a 'stream' property that is a valid stream type
+      const streamName = subscription.stream;
+      if (!streamName || !validTypes.has(streamName as StreamType)) {
+        return false;
+      }
+      // a more robust check could validate the 'rate' property here too
       return true;
     }
 
-    // Enhanced debugging for RTMP stream status
-    if (subscription === 'rtmp_stream_status' || subscription === StreamType.RTMP_STREAM_STATUS) {
-      logger.info({
-        debugKey: 'RTMP_SUB_VALIDATION_CHECK',
-        subscription,
-        subscriptionType: typeof subscription,
-        isValid,
-        hasInValidTypes: validTypes.has(subscription as StreamType),
-        isLanguageStream: isLanguageStream(subscription),
-        streamTypeEnum: StreamType.RTMP_STREAM_STATUS,
-        validTypesArray: Array.from(validTypes).slice(0, 10), // First 10 to avoid log spam
-        validTypesSize: validTypes.size,
-        validTypesHasRtmp: validTypes.has(StreamType.RTMP_STREAM_STATUS),
-        streamTypeImport: '@mentra/sdk'
-      }, 'RTMP_SUB_VALIDATION_CHECK: Validating RTMP stream status subscription in session service');
-    }
-
-    return isValid;
+    return false; // Return false for any other invalid type
   }
 
   public getSubscriptionEntries() {
