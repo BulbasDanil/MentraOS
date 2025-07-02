@@ -23,7 +23,8 @@ COPY packages/sdk/src ./packages/sdk/src
 
 # Install dependencies and build packages
 RUN bun install --no-link && \
-    cd packages/sdk && bun run build
+    cd packages/sdk && bun run build && \
+    cd ../../apps/dashboard && bun run build
     
 # Cloud no longer depends on utils or agents, so we don't need to build them anymore
 # && cd ../utils && bun run build && \
