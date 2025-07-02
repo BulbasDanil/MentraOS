@@ -34,7 +34,7 @@ export class LocationManager {
         correlationId: requestId,
         packageName: this.session.getPackageName(),
         sessionId: this.session.getSessionId(),
-        payload: { accuracy: options.accuracy }
+        accuracy: options.accuracy
       });
 
       // sets a timeout to prevent the promise from hanging indefinitely
