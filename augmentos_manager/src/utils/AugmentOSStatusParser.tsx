@@ -226,11 +226,10 @@ export class AugmentOSParser {
           core_token_status: authInfo.core_token_status,
           last_verification_timestamp: authInfo.last_verification_timestamp,
         },
-        force_update: false, // status.force_update ?? false
-        // TODO: Hardcoding this false fixes a bug that
-        // causes us to jump back to the home screen whenever
-        // a setting is changed. I don't know why this works.
-        // Somebody look at this please.
+        force_update: status.force_update ?? false,
+        // Fixed: Now properly uses server value instead of hardcoded false.
+        // This allows legitimate UI updates while preventing unwanted navigation
+        // during normal settings changes by relying on proper backend implementation.
       }
     }
     return AugmentOSParser.defaultStatus

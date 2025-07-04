@@ -31,8 +31,6 @@ export const StatusProvider = ({children}: {children: ReactNode}) => {
 
     const parsedStatus = AugmentOSParser.parseStatus(data)
 
-    const forceUpdate = parsedStatus.force_update
-
     if (INTENSE_LOGGING) console.log("Parsed status:", parsedStatus)
 
     setStatus(parsedStatus)
